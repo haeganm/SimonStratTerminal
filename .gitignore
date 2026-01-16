@@ -1,0 +1,25 @@
+﻿# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+.vite/
+
+# Local data/logs
+backend/data/
+backend/logs/
+*.db
+*.duckdb
+
+# Env
+.env
+.env.*
