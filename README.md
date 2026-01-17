@@ -1,261 +1,305 @@
-# Simons Trading System
+# Systematic Trading Research Platform
 
-A local, open-source systematic trading research platform inspired by Renaissance Technologies' workflow. This system implements a Renaissance-style research process: ingest data → generate weak signals → ensemble forecasts → risk management → walk-forward backtesting.
+A local, open-source research terminal and backtester for systematic equity strategies with signals, forecasting, and walk-forward validation.
+
+![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-009688.svg)
+![React](https://img.shields.io/badge/React-18.3+-61dafb.svg)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Disclaimer](#disclaimer)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [API Reference](#api-reference)
+- [Data & Staleness](#data--staleness)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [Security & Repo Hygiene](#security--repo-hygiene)
+- [License](#license)
+
+---
 
 ## Overview
 
-- **Stocks-only**: Designed for US equity trading
-- **Free data sources**: Uses Stooq for historical market data (no paid APIs)
-- **Offline testing**: All tests run offline by default
-- **No secrets committed**: All configuration uses environment variables
+A systematic trading research terminal built for backtesting signal-based strategies on US equities. The platform combines data ingestion, feature engineering, signal generation, ensemble forecasting, and leakage-safe backtesting with walk-forward evaluation.
+
+**Inspired by**: Systematic quantitative research workflows (educational/research use only).
+
+**Data Source**: [Stooq](https://stooq.com/) (free, no API keys required). Provides daily end-of-day (EOD) historical data that may be delayed; no real-time quotes.
+
+---
+
+## Disclaimer
+
+⚠️ **This software is for research and educational purposes only. Not financial advice.**
+
+Past performance does not guarantee future results. All trading involves risk of loss. The authors and contributors are not responsible for any financial losses. Use at your own risk.
+
+---
+
+## Features
+
+- 📊 **Data ingestion & caching**: Historical daily OHLCV data from Stooq with DuckDB caching
+- 📈 **Signal generation**: Momentum, mean reversion, and regime filter signals
+- 🎯 **Strategy presets**: Four presets (default, trend, mean_reversion, conservative)
+- 🔮 **Ensemble forecasting**: Weighted signal combination with confidence scoring
+- 🛡️ **Risk management**: Volatility targeting, position sizing, drawdown stops
+- ✅ **Leakage-safe backtesting**: Time-aware engine with transaction costs
+- 🔄 **Walk-forward evaluation**: Out-of-sample testing to avoid overfitting
+- 🌐 **REST API**: FastAPI backend for programmatic access
+- 💻 **Web UI**: React + TypeScript frontend for visualization
+
+---
 
 ## Quick Start
 
-### Option 1: Run Everything at Once (Recommended)
+### Option A: One-Command Setup (Recommended)
 
 **Windows:**
 ```powershell
 .\start-dev.ps1
 ```
 
-**Mac/Linux:**
+**macOS/Linux:**
 ```bash
 chmod +x start-dev.sh
 ./start-dev.sh
 ```
 
-This will:
-- Start the backend server at http://127.0.0.1:8000
-- Start the frontend server at http://localhost:8080
-- Install frontend dependencies if needed
+This starts both backend (port 8000) and frontend (port 8080) servers.
 
-### Option 2: Run Separately
+**Access points:**
+- Frontend UI: http://localhost:8080
+- Backend API: http://127.0.0.1:8000
+- API Docs: http://127.0.0.1:8000/docs
+
+### Option B: Run Separately
 
 **Terminal 1 - Backend:**
 ```bash
 cd backend
+python -m venv venv
+# Windows: venv\Scripts\activate
+# macOS/Linux: source venv/bin/activate
+pip install -e ".[dev]"
 python -m app.cli serve
 ```
 
 **Terminal 2 - Frontend:**
 ```bash
 cd signal-compass
-npm install  # First time only
+npm install
 npm run dev
 ```
 
-## Access Points
+---
 
-- **Frontend**: http://localhost:8080
-- **Backend API**: http://127.0.0.1:8000
-- **API Documentation**: http://127.0.0.1:8000/docs
+## Installation
 
-## Project Structure
+### Requirements
 
+- **Python**: 3.11 or higher
+- **Node.js**: 18 or higher (and npm)
+
+### Backend
+
+From the `backend/` directory:
+
+```bash
+pip install -e ".[dev]"
 ```
-SimonsStrat/
-├── backend/          # Python FastAPI backend
-│   ├── app/         # Application code
-│   ├── data/        # Data storage (DuckDB)
-│   └── tests/       # Test suite
-└── signal-compass/  # React + TypeScript frontend
-    ├── src/         # Source code
-    └── public/       # Static assets
+
+This installs the package in editable mode with development dependencies (pytest, black, mypy).
+
+### Frontend
+
+From the `signal-compass/` directory:
+
+```bash
+npm install
 ```
+
+---
 
 ## Configuration
 
 ### Backend
-1. Copy `backend/env.example` to `backend/.env`
-2. Edit `backend/.env` with your settings (defaults work for most use cases)
 
-Key settings:
-- `DATA_PROVIDER=stooq` - Data source (Stooq is free, no API keys required)
-- `DUCKDB_PATH=./data/trading.db` - Local database path
-- `API_PORT=8000` - Backend API port
-- `CORS_ORIGINS` - Comma-separated list of allowed frontend origins
+1. Copy `backend/env.example` to `backend/.env`
+2. Default settings work for most use cases (no changes needed)
+
+**Key settings:**
+- `DATA_PROVIDER=stooq` (free, no API keys)
+- `API_PORT=8000`
+- `DUCKDB_PATH=./data/trading.db`
+- `CORS_ORIGINS` (comma-separated frontend URLs)
 
 ### Frontend
+
 1. Copy `signal-compass/.env.example` to `signal-compass/.env`
-2. Update `VITE_API_BASE_URL` if your backend runs on a different port:
-```env
-VITE_API_BASE_URL=http://127.0.0.1:8000
-```
+2. Default `VITE_API_BASE_URL=http://127.0.0.1:8000` works if backend runs on port 8000
 
-**Security Note**: `.env` files are git-ignored. Never commit real credentials. Use `.env.example` files as templates.
+**Note**: `.env` files are git-ignored. Never commit real credentials. Use `.env.example` files as templates.
 
-## Requirements
+---
 
-- Python 3.11+
-- Node.js 18+ and npm
-- Backend dependencies: `pip install -e ".[dev]"` (from backend directory)
-- Frontend dependencies: `npm install` (from signal-compass directory)
+## Usage
 
-## Features
-
-- **Data Ingestion**: Free historical data from Stooq (CSV downloads)
-- **Signal Generation**: Momentum, mean reversion, and regime filter signals
-- **Ensemble Forecasting**: Weighted combination of signals with walk-forward optimization
-- **Risk Management**: Volatility targeting, position sizing, drawdown stops
-- **Backtesting**: Leakage-safe engine with transaction costs
-- **Walk-Forward Evaluation**: Out-of-sample testing to avoid overfitting
-- **API & CLI**: FastAPI REST API and command-line tools
-- **Frontend Integration**: React + TypeScript UI for visualization
-
-## API Endpoints
-
-All endpoints return JSON with data staleness indicators (`is_delayed`, `staleness_seconds`, `warnings`).
-
-- `GET /health` - Health check and data source status
-- `GET /history?ticker=AAPL&start=2020-01-01&end=2024-01-01` - Get historical OHLCV bars
-- `GET /signals?ticker=AAPL&start=2020-01-01&end=2024-01-01` - Get signal history
-- `GET /forecast?ticker=AAPL&preset=default` - Get latest forecast
-- `GET /backtest?ticker=AAPL&start=2020-01-01&end=2024-12-31&preset=default` - Run backtest
-
-### Example API Calls
+### API Examples
 
 **PowerShell:**
 ```powershell
+# Health check
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method Get
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/history?ticker=AAPL&start=2020-01-01&end=2024-01-01" -Method Get
+
+# Get forecast with default preset
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/forecast?ticker=AAPL&preset=default" -Method Get
+
+# Get historical data
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/history?ticker=AAPL&start=2024-01-01&end=2024-01-10" -Method Get
 ```
 
 **cURL:**
 ```bash
+# Health check
 curl "http://127.0.0.1:8000/health"
-curl "http://127.0.0.1:8000/history?ticker=AAPL&start=2020-01-01&end=2024-01-01"
+
+# Get forecast with trend preset
+curl "http://127.0.0.1:8000/forecast?ticker=AAPL&preset=trend"
+
+# Get historical data
+curl "http://127.0.0.1:8000/history?ticker=AAPL&start=2024-01-01&end=2024-01-10"
 ```
 
-## Strategy Presets
+### Strategy Presets
 
-The system supports four strategy presets for backtesting and forecasting:
+Use the `preset` query parameter in `/forecast` and `/backtest` endpoints:
 
-- **`default`**: Balanced approach with equal signal weights, 30% regime weight, 10% threshold
-- **`trend`**: Momentum-focused (60% momentum, 20% mean reversion), 15% threshold
-- **`mean_reversion`**: Mean reversion-focused (20% momentum, 60% mean reversion), 8% threshold
-- **`conservative`**: Lower risk with higher threshold (20%), equal signal weights, 20% regime weight
+- `default` - Balanced (equal weights, 30% regime, 10% threshold)
+- `trend` - Momentum-focused (60% momentum, 20% mean reversion, 15% threshold)
+- `mean_reversion` - Mean reversion-focused (20% momentum, 60% mean reversion, 8% threshold)
+- `conservative` - Lower risk (equal weights, 20% regime, 20% threshold)
 
-Use the `preset` query parameter in `/forecast` and `/backtest` endpoints to select a preset.
+**Example with preset:**
+```bash
+curl "http://127.0.0.1:8000/forecast?ticker=AAPL&preset=trend"
+```
 
-## Data Sources & Staleness Semantics
+---
 
-### Stooq (Default Data Provider)
+## API Reference
 
-- **Type**: Historical daily OHLCV data via CSV downloads
-- **Coverage**: US stocks and ETFs (requires `.us` suffix, e.g., `AAPL.us`)
-- **Rate Limits**: 1 request/second (configurable via `STOOQ_RATE_LIMIT_SECONDS`)
-- **Staleness**: Data may be delayed; all API responses include staleness indicators
+All endpoints return JSON with common metadata:
+
+- `as_of` - Request timestamp (UTC)
+- `data_source` - Provider name (e.g., "stooq")
+- `is_delayed` - Boolean indicating data staleness
+- `staleness_seconds` - Seconds since market close (or `null`)
+- `warnings` - Array of warning messages
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check and data source status |
+| `GET` | `/history?ticker=AAPL&start=2020-01-01&end=2024-01-01` | Historical OHLCV bars |
+| `GET` | `/signals?ticker=AAPL&start=2020-01-01&end=2024-01-01` | Signal history |
+| `GET` | `/forecast?ticker=AAPL&preset=default` | Latest forecast |
+| `GET` | `/backtest?ticker=AAPL&start=2020-01-01&end=2024-12-31&preset=default` | Run backtest |
+
+Interactive API documentation available at http://127.0.0.1:8000/docs
+
+---
+
+## Data & Staleness
+
+### Stooq Provider
+
+- **Type**: End-of-day (EOD) historical data via CSV downloads
+- **Coverage**: US stocks and ETFs
+- **Ticker format**: Accepts `AAPL` or `AAPL.us` (normalized internally; `.us` suffix recommended for US stocks)
+- **Update frequency**: Daily after market close (data may be delayed by 1+ days)
+- **Rate limit**: 1 request/second
 
 ### Staleness Indicators
 
-All API responses include:
-- **`is_delayed`**: Boolean indicating if data is stale (typically true for Stooq EOD data)
-- **`staleness_seconds`**: Number of seconds since last bar's market close (or `null` if data is current/future)
-- **`last_bar_date`**: ISO date string (YYYY-MM-DD) of the most recent bar
-- **`warnings`**: List of warning messages about data quality or availability
+All API responses include staleness metadata:
 
-**How staleness is computed:**
-- Daily bars are treated as closing at 20:00 UTC (4:00 PM ET, US market close)
-- `staleness_seconds` = current UTC time - (last_bar_date + 20:00 UTC)
-- If `staleness_seconds` > 0, data is stale and `is_delayed=true`
+- **`is_delayed`**: Boolean (typically `true` for EOD data)
+- **`staleness_seconds`**: Seconds since last bar's market close (4:00 PM ET = 20:00 UTC), or `null` if data is current/future
+- **`last_bar_date`**: Most recent bar date (YYYY-MM-DD)
+- **`warnings`**: Array of data quality or availability messages
 
-**End date clamping:**
-- If requested `end` date is in the future or beyond available data, the system clamps to the latest available bar date
-- Check `last_bar_date` in responses to see the actual end date used
+**How it works**: Daily bars are treated as closing at 20:00 UTC (4:00 PM ET). Staleness is computed as: current UTC time - (last_bar_date + 20:00 UTC).
+
+**End date clamping**: If a requested `end` date exceeds available data, the system automatically clamps to the latest available bar. Check `last_bar_date` in responses to see the actual end date used.
+
+---
 
 ## Testing
 
-### Backend Tests
+Run backend tests (offline by default, no external API calls):
 
-Run all tests (offline by default):
 ```bash
 cd backend
 python -m pytest -q
 ```
 
-Run with verbose output:
-```bash
-python -m pytest -v
-```
+Tests use mock data providers for reproducibility. Test suite includes leakage detection, math correctness, and API contract validation.
 
-Run specific test file:
-```bash
-python -m pytest tests/test_backtest.py -v
-```
-
-**Test Philosophy:**
-- All tests are **offline by default** (no external API calls)
-- Tests use mock/fake data providers to ensure reproducibility
-- Test suite includes leakage detection, math correctness, and API contract validation
+---
 
 ## Troubleshooting
 
-### Common Issues
+**CORS errors**: Add frontend URL to `CORS_ORIGINS` in `backend/.env` (default includes `http://localhost:8080` and common ports)
 
-**CORS errors:**
-- Ensure frontend URL is in `CORS_ORIGINS` in `backend/.env`
-- Default includes `http://localhost:5173,http://localhost:8080,http://127.0.0.1:5173,http://127.0.0.1:8080`
-- Restart backend server after changing CORS settings
+**Connection refused**: Verify backend is running: `http://127.0.0.1:8000/health`
 
-**Connection refused:**
-- Verify backend is running on port 8000: `http://127.0.0.1:8000/health`
-- Check `VITE_API_BASE_URL` in `signal-compass/.env` matches backend port
+**Wrong `VITE_API_BASE_URL`**: Ensure `signal-compass/.env` has `VITE_API_BASE_URL=http://127.0.0.1:8000` matching backend port
 
-**Port conflicts:**
-- Change `API_PORT` in `backend/.env` and update `VITE_API_BASE_URL` in `signal-compass/.env`
-- Or use different ports in `start-dev.ps1` / `start-dev.sh`
+**Port conflicts**: Change `API_PORT` in `backend/.env` and update `VITE_API_BASE_URL` in `signal-compass/.env`
 
-**Missing dependencies:**
-- Backend: `cd backend && pip install -e ".[dev]"`
-- Frontend: `cd signal-compass && npm install`
+**Ticker not found**: Try adding `.us` suffix (e.g., `AAPL.us`) for US stocks
 
-**Data not loading:**
-- Check data staleness indicators (`is_delayed`, `staleness_seconds`) in API responses
-- Stooq data is end-of-day (EOD) and may be delayed
-- Verify ticker format (use `.us` suffix for US stocks if needed)
+**Missing dependencies**: Reinstall backend (`pip install -e ".[dev]"`) or frontend (`npm install`)
 
-**Tests failing:**
-- Ensure you're in the `backend` directory: `cd backend && pytest`
-- Check Python version: `python --version` (requires 3.11+)
+---
 
-## Security & Hygiene
+## Security & Repo Hygiene
 
-- **No secrets committed**: All configuration uses environment variables via `.env` files
-- **Free data sources only**: Uses Stooq (no paid APIs or API keys required)
-- **Private repo ready**: `.gitignore` excludes build artifacts, local DBs, logs, and `.env` files
-- **Example templates**: `.env.example` files are provided as templates
+- ✅ **No secrets committed**: All configuration via `.env` files (git-ignored)
+- ✅ **Free data sources only**: Uses Stooq (no paid APIs or API keys required)
+- ✅ **`.gitignore` configured**: Excludes build artifacts, local DBs, logs, `.env` files
+- ✅ **Template files**: `.env.example` files provided for setup
 
-**Pre-push checklist:**
+### Pre-Push Checklist
 
 **Windows (PowerShell):**
 ```powershell
-# Check for tracked .env files
-git ls-files | Select-String -Pattern "\.env$"
-
-# Check for tracked DB/log files
-git ls-files | Select-String -Pattern "(\.db|\.sqlite|\.duckdb)$"
-
-# Run tests
-cd backend
-python -m pytest -q
-
-# Check git status
 git status
-```
-
-**Mac/Linux:**
-```bash
-# Check for tracked .env files
-git ls-files | grep "\.env$"
-
-# Check for tracked DB/log files
-git ls-files | grep -E "\.(db|sqlite|duckdb)$"
-
-# Run tests
+git ls-files | Select-String -Pattern "(\.env$|\.db$|\.sqlite$|egg-info/)"
 cd backend && python -m pytest -q
-
-# Check git status
-git status
 ```
 
-All commands should return empty results (no tracked artifacts).
+**macOS/Linux:**
+```bash
+git status
+git ls-files | grep -E "(\.env$|\.db$|\.sqlite$|egg-info/)"
+cd backend && python -m pytest -q
+```
+
+Should return empty results for tracked artifacts check.
+
+---
+
+## License
+
+See LICENSE file in the repository root. (If no LICENSE file exists, please add one for open-source distribution.)
