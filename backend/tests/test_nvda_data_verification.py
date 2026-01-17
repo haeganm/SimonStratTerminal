@@ -14,10 +14,11 @@ def test_nvda_ticker_variants(tmp_path):
     """Verify NVDA, nvda, NVDA.US all return same data."""
     from app.data.cache import DataCache
     
+    from app.data.stooq_provider import StooqProvider
     db_path = tmp_path / "test.db"
     repository = DataRepository(db_path=str(db_path))
     cache = DataCache(repository=repository)
-    fetcher = DataFetcher(cache=cache)
+    fetcher = DataFetcher(provider=StooqProvider(), cache=cache)
     
     ticker_variants = ["NVDA", "nvda", "NVDA.US", "NVDA.us"]
     end_date = date.today()
@@ -56,10 +57,11 @@ def test_nvda_cache_isolation(tmp_path):
     """Ensure NVDA cache doesn't contain AAPL or other ticker data."""
     from app.data.cache import DataCache
     
+    from app.data.stooq_provider import StooqProvider
     db_path = tmp_path / "test.db"
     repository = DataRepository(db_path=str(db_path))
     cache = DataCache(repository=repository)
-    fetcher = DataFetcher(cache=cache)
+    fetcher = DataFetcher(provider=StooqProvider(), cache=cache)
     
     end_date = date.today()
     start_date = end_date - timedelta(days=30)
@@ -133,10 +135,11 @@ def test_nvda_price_sanity_check(tmp_path):
     """Verify NVDA price is in reasonable range ($1-$1000)."""
     from app.data.cache import DataCache
     
+    from app.data.stooq_provider import StooqProvider
     db_path = tmp_path / "test.db"
     repository = DataRepository(db_path=str(db_path))
     cache = DataCache(repository=repository)
-    fetcher = DataFetcher(cache=cache)
+    fetcher = DataFetcher(provider=StooqProvider(), cache=cache)
     
     end_date = date.today()
     start_date = end_date - timedelta(days=30)
@@ -162,10 +165,11 @@ def test_nvda_vs_aapl_price_difference(tmp_path):
     """Verify NVDA and AAPL have different prices (cache collision check)."""
     from app.data.cache import DataCache
     
+    from app.data.stooq_provider import StooqProvider
     db_path = tmp_path / "test.db"
     repository = DataRepository(db_path=str(db_path))
     cache = DataCache(repository=repository)
-    fetcher = DataFetcher(cache=cache)
+    fetcher = DataFetcher(provider=StooqProvider(), cache=cache)
     
     end_date = date.today()
     start_date = end_date - timedelta(days=30)

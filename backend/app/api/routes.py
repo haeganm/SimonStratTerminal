@@ -71,6 +71,21 @@ def get_signal_instances() -> list:
     return _signals
 
 
+def _extract_last_bar_date(bars: pd.DataFrame) -> Optional[str]:
+    """Extract the latest bar date as ISO string (YYYY-MM-DD)."""
+    if bars.empty:
+        return None
+    
+    try:
+        if isinstance(bars.index, pd.DatetimeIndex):
+            latest_date = bars.index.max().date()
+        else:
+            latest_date = pd.to_datetime(bars.index.max()).date()
+        return latest_date.isoformat()
+    except Exception:
+        return None
+
+
 def _get_staleness_info(bars: pd.DataFrame, ticker: str) -> tuple[bool, Optional[int], list[str]]:
     """Get data staleness information."""
     warnings = []
@@ -328,6 +343,9 @@ async def get_history(
         # Normalize ticker to canonical form for consistent responses
         canonical = canonical_ticker(ticker)
         
+        # Extract last bar date
+        last_bar_date = _extract_last_bar_date(bars)
+        
         return HistoryResponse(
             ticker=canonical,
             data=history_bars,
@@ -335,6 +353,7 @@ async def get_history(
             as_of=as_of_time,
             is_delayed=is_delayed,
             staleness_seconds=staleness_seconds,
+            last_bar_date=last_bar_date,
             warnings=warnings,
         )
 
@@ -395,6 +414,7 @@ async def signals_endpoint(
                 as_of=now_utc(),
                 is_delayed=False,
                 staleness_seconds=None,
+                last_bar_date=None,
                 warnings=[f"No data found for {ticker}"],
             )
 
@@ -424,6 +444,7 @@ async def signals_endpoint(
                 as_of=now_utc(),
                 is_delayed=False,
                 staleness_seconds=None,
+                last_bar_date=_extract_last_bar_date(bars),
                 warnings=["Insufficient data for feature computation"],
             )
 
@@ -463,6 +484,9 @@ async def signals_endpoint(
         if staleness_seconds is not None:
             staleness_seconds = int(staleness_seconds)
 
+        # Extract last bar date
+        last_bar_date = _extract_last_bar_date(bars)
+
         return SignalsResponse(
             ticker=canonical,
             signals=signal_list,
@@ -470,6 +494,7 @@ async def signals_endpoint(
             as_of=now_utc(),
             is_delayed=is_delayed,
             staleness_seconds=staleness_seconds,
+            last_bar_date=last_bar_date,
             warnings=warnings,
         )
 
@@ -621,6 +646,9 @@ async def get_forecast(
         # Normalize ticker to canonical form for consistent responses
         canonical = canonical_ticker(ticker)
         
+        # Extract last bar date
+        last_bar_date = _extract_last_bar_date(bars)
+        
         return ForecastResponse(
             ticker=canonical,
             direction=str(forecast.direction),
@@ -631,6 +659,7 @@ async def get_forecast(
             as_of=now_utc(),
             is_delayed=is_delayed,
             staleness_seconds=staleness_seconds,
+            last_bar_date=last_bar_date,
             warnings=warnings,
         )
 
@@ -714,20 +743,8 @@ async def run_backtest(
                 })
 
         # Convert trades to response format
-        # NOTE: Trade History is removed by default due to P&L calculation concerns.
-        # The trades DataFrame is still computed internally for metrics, but not returned to client.
-        trade_list = []  # Return empty list by default
-        # Uncomment below to enable Trade History (after verifying P&L correctness):
-        # if not trades.empty:
-        #     for _, row in trades.iterrows():
-        #         trade_list.append({
-        #             "date": row["date"].strftime("%Y-%m-%d") if isinstance(row["date"], date) else pd.to_datetime(row["date"]).strftime("%Y-%m-%d"),
-        #             "action": str(row["action"]),
-        #             "quantity": float(row["quantity"]),
-        #             "price": float(row["price"]),
-        #             "pnl": float(row["pnl"]),
-        #             "position_after": float(row["position_after"]),
-        #         })
+        # Trade History is not returned to client (trades DataFrame is still computed internally for metrics).
+        trade_list = []  # Always return empty list
 
         # Get staleness info
         is_delayed, staleness_seconds, staleness_warnings = _get_staleness_info(bars_normalized, ticker)
@@ -741,6 +758,9 @@ async def run_backtest(
 
         # Normalize ticker to canonical form for consistent responses
         canonical = canonical_ticker(ticker)
+        
+        # Extract last bar date (use original bars, not normalized)
+        last_bar_date = _extract_last_bar_date(bars)
         
         return BacktestResponse(
             ticker=canonical,
@@ -761,6 +781,7 @@ async def run_backtest(
             as_of=now_utc(),
             is_delayed=is_delayed,
             staleness_seconds=staleness_seconds,
+            last_bar_date=last_bar_date,
             warnings=warnings,
         )
 

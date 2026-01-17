@@ -37,6 +37,7 @@ class HistoryResponse(BaseModel):
     as_of: datetime
     is_delayed: bool = False
     staleness_seconds: Optional[int] = None
+    last_bar_date: Optional[str] = None  # ISO date string (YYYY-MM-DD) of latest available bar
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -61,6 +62,7 @@ class SignalsResponse(BaseModel):
     as_of: datetime
     is_delayed: bool = False
     staleness_seconds: Optional[int] = None
+    last_bar_date: Optional[str] = None  # ISO date string (YYYY-MM-DD) of latest available bar
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -83,6 +85,7 @@ class ForecastResponse(BaseModel):
     as_of: datetime
     is_delayed: bool = False
     staleness_seconds: Optional[int] = None
+    last_bar_date: Optional[str] = None  # ISO date string (YYYY-MM-DD) of latest available bar
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -130,6 +133,7 @@ class BacktestResponse(BaseModel):
     as_of: datetime
     is_delayed: bool = False
     staleness_seconds: Optional[int] = None
+    last_bar_date: Optional[str] = None  # ISO date string (YYYY-MM-DD) of latest available bar
     warnings: list[str] = Field(default_factory=list)
 
 

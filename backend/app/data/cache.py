@@ -46,24 +46,6 @@ class DataCache:
                 f"input_ticker={ticker}, canonical_ticker={canonical}, "
                 f"cache_key={cache_key}, start_date={start_date}, end_date={end_date}"
             )
-        import json
-        from pathlib import Path
-        from datetime import datetime
-        debug_log_path = Path(__file__).parent.parent.parent.parent / ".cursor" / "debug.log"
-        try:
-            log_entry = {
-                "timestamp": int(datetime.now().timestamp() * 1000),
-                "location": "cache.get_bars:entry",
-                "message": "get_bars called",
-                "data": {"ticker": ticker, "start": str(start_date), "end": str(end_date)},
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "B",
-            }
-            with open(debug_log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(log_entry) + "\n")
-        except Exception:
-            pass
         
         try:
             bars = self.repository.get_bars(canonical, start_date, end_date)
@@ -78,32 +60,19 @@ class DataCache:
                     else:
                         first_date = pd.to_datetime(bars.index.min()).date()
                         last_date = pd.to_datetime(bars.index.max()).date()
+                    first_close = float(bars.iloc[0]["close"]) if "close" in bars.columns and len(bars) > 0 else None
                     last_close = float(bars.iloc[-1]["close"]) if "close" in bars.columns else None
                     logger.debug(
                         f"[DEBUG] DataCache.get_bars: CACHE_{cache_status.upper()} "
-                        f"ticker={canonical}, bars_count={len(bars)}, "
-                        f"first_date={first_date}, last_date={last_date}, last_close={last_close}"
+                        f"ticker={canonical}, cache_key={cache_key}, bars_count={len(bars)}, "
+                        f"first_date={first_date}, last_date={last_date}, "
+                        f"first_close={first_close}, last_close={last_close}"
                     )
                 else:
                     logger.debug(
                         f"[DEBUG] DataCache.get_bars: CACHE_{cache_status.upper()} "
-                        f"ticker={canonical}, bars_empty=True"
+                        f"ticker={canonical}, cache_key={cache_key}, bars_empty=True"
                     )
-            
-            try:
-                log_entry = {
-                    "timestamp": int(datetime.now().timestamp() * 1000),
-                    "location": "cache.get_bars:after_repo",
-                    "message": "Repository returned data",
-                    "data": {"ticker": canonical, "bars_empty": bars.empty, "bars_count": len(bars) if not bars.empty else 0},
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "B",
-                }
-                with open(debug_log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except Exception:
-                pass
             
             return bars
         except Exception as e:
@@ -183,11 +152,23 @@ class DataCache:
             
             # Debug logging: log cache store success
             if settings.debug_mode:
-                logger.debug(
-                    f"[DEBUG] DataCache.store_bars: "
-                    f"ticker={canonical}, stored_bars={len(bars_normalized)}, "
-                    f"warnings_count={len(warnings)}"
-                )
+                if not bars_normalized.empty:
+                    first_date = bars_normalized["date"].min().date() if "date" in bars_normalized.columns else None
+                    last_date = bars_normalized["date"].max().date() if "date" in bars_normalized.columns else None
+                    first_close = float(bars_normalized.iloc[0]["close"]) if "close" in bars_normalized.columns and len(bars_normalized) > 0 else None
+                    last_close = float(bars_normalized.iloc[-1]["close"]) if "close" in bars_normalized.columns else None
+                    logger.debug(
+                        f"[DEBUG] DataCache.store_bars: CACHE_STORE "
+                        f"ticker={canonical}, source={source}, stored_bars={len(bars_normalized)}, "
+                        f"first_date={first_date}, last_date={last_date}, "
+                        f"first_close={first_close}, last_close={last_close}, "
+                        f"warnings_count={len(warnings)}"
+                    )
+                else:
+                    logger.debug(
+                        f"[DEBUG] DataCache.store_bars: CACHE_STORE "
+                        f"ticker={canonical}, source={source}, stored_bars=0 (empty)"
+                    )
 
             return warnings
         except Exception as e:

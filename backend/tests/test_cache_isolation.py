@@ -35,10 +35,10 @@ def test_cache_isolation_different_tickers(tmp_path):
     cache = DataCache(repository=repository)
     
     # Fetch NVDA data
-    nvda_bars, _ = cache.get_bars("NVDA", date(2023, 1, 1), date(2023, 1, 31))
+    nvda_bars = cache.get_bars("NVDA", date(2023, 1, 1), date(2023, 1, 31))
     
     # Fetch AAPL data
-    aapl_bars, _ = cache.get_bars("AAPL", date(2023, 1, 1), date(2023, 1, 31))
+    aapl_bars = cache.get_bars("AAPL", date(2023, 1, 1), date(2023, 1, 31))
     
     # Ensure they don't share cache (if one is empty and other isn't, that's fine for this test)
     # The key test is that they use different cache keys
@@ -101,3 +101,37 @@ def test_cache_key_includes_ticker():
     assert canonical_ticker("NVDA") == "NVDA"
     assert canonical_ticker("nvda") == "NVDA"
     assert canonical_ticker("NVDA.US") == "NVDA"
+
+
+def test_nvda_vs_aapl_different_prices(fake_provider, tmp_path):
+    """Test that NVDA and AAPL have different prices (cache isolation verification)."""
+    from app.storage.repository import DataRepository
+    from app.data.cache import DataCache
+    
+    db_path = tmp_path / "test.db"
+    repository = DataRepository(db_path=str(db_path))
+    cache = DataCache(repository=repository)
+    fetcher = DataFetcher(provider=fake_provider, cache=cache)
+    
+    # Fetch NVDA data
+    nvda_bars, _ = fetcher.get_bars("NVDA", date(2023, 1, 1), date(2023, 1, 31))
+    
+    # Fetch AAPL data
+    aapl_bars, _ = fetcher.get_bars("AAPL", date(2023, 1, 1), date(2023, 1, 31))
+    
+    # Both should have data
+    assert not nvda_bars.empty, "NVDA should have data"
+    assert not aapl_bars.empty, "AAPL should have data"
+    
+    # Get last close prices
+    nvda_close = float(nvda_bars.iloc[-1]["close"])
+    aapl_close = float(aapl_bars.iloc[-1]["close"])
+    
+    # Prices should be different (fake_provider generates ticker-specific prices)
+    assert nvda_close != aapl_close, \
+        f"NVDA and AAPL should have different prices: NVDA=${nvda_close:.2f}, AAPL=${aapl_close:.2f}"
+    
+    # Verify cache keys are different
+    nvda_canonical = canonical_ticker("NVDA")
+    aapl_canonical = canonical_ticker("AAPL")
+    assert nvda_canonical != aapl_canonical, "NVDA and AAPL should have different canonical keys"

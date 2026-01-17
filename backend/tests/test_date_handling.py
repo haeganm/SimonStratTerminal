@@ -113,3 +113,44 @@ def test_date_clamping_warning_message(fake_provider):
         # If there's a warning about future dates, it should mention clamping
         if any("future" in w.lower() or "clamped" in w.lower() for w in warnings):
             assert "future" in warning_text or "clamped" in warning_text
+
+
+def test_last_bar_date_in_response(fake_provider):
+    """Test that last_bar_date is included in API responses."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    fetcher = DataFetcher(provider=fake_provider)
+
+    with patch("app.api.routes.get_data_fetcher", return_value=fetcher):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=30)
+
+        # Test history endpoint
+        response = client.get(
+            f"/history?ticker=TEST&start={start_date}&end={end_date}"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "last_bar_date" in data
+        # last_bar_date should be a string (ISO date) or null
+        if data["last_bar_date"] is not None:
+            assert isinstance(data["last_bar_date"], str)
+            # Should be valid ISO date format
+            from datetime import datetime
+            datetime.fromisoformat(data["last_bar_date"])
+
+        # Test signals endpoint
+        response = client.get(
+            f"/signals?ticker=TEST&start={start_date}&end={end_date}"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "last_bar_date" in data
+
+        # Test forecast endpoint
+        response = client.get(f"/forecast?ticker=TEST")
+        assert response.status_code == 200
+        data = response.json()
+        assert "last_bar_date" in data

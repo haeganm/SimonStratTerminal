@@ -20,10 +20,11 @@ def test_nvda_vs_aapl_deterministic_repro(tmp_path):
     - bar counts are similar (within 10% for same window)
     - cache keys are different (canonical ticker isolation)
     """
+    from app.data.stooq_provider import StooqProvider
     db_path = tmp_path / "test.db"
     repository = DataRepository(db_path=str(db_path))
     cache = DataCache(repository=repository)
-    fetcher = DataFetcher(cache=cache)
+    fetcher = DataFetcher(provider=StooqProvider(), cache=cache)
     
     # Use same date window for both tickers
     end_date = date.today()

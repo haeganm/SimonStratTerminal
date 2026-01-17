@@ -68,10 +68,18 @@ def test_nvda_smoke_endpoints(fake_provider):
         assert "max_drawdown" in metrics
 
 
-def test_nvda_vs_aapl_cache_isolation_smoke(fake_provider):
+def test_nvda_vs_aapl_cache_isolation_smoke(fake_provider, tmp_path):
     """Verify NVDA and AAPL cannot return identical last closes (cache collision check)."""
+    from app.data.cache import DataCache
+    from app.storage.repository import DataRepository
+    
+    # Use temporary database to avoid cached data from previous runs
+    db_path = tmp_path / "test.db"
+    repository = DataRepository(db_path=str(db_path))
+    cache = DataCache(repository=repository)
+    
     client = TestClient(app)
-    fetcher = DataFetcher(provider=fake_provider)
+    fetcher = DataFetcher(provider=fake_provider, cache=cache)
     
     end_date = date.today()
     start_date = end_date - timedelta(days=30)

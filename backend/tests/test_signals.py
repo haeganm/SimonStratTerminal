@@ -42,7 +42,7 @@ def test_momentum_signal(sample_bars, sample_features):
 
     result = signal.compute(sample_bars, sample_features, test_date)
 
-    assert result.name == "Momentum"
+    assert result.name == "Trend (recent price strength)"
     assert -1.0 <= result.score <= 1.0
     assert 0.0 <= result.confidence <= 1.0
     assert result.timestamp is not None
@@ -58,7 +58,7 @@ def test_meanreversion_signal(sample_bars, sample_features):
     test_date = sample_bars.index[50]
     result = signal.compute(sample_bars, sample_features, test_date)
 
-    assert result.name == "Mean Reversion"
+    assert result.name == "Pullback vs average"
     assert -1.0 <= result.score <= 1.0
     assert 0.0 <= result.confidence <= 1.0
 
@@ -73,7 +73,7 @@ def test_regime_signal(sample_bars, sample_features):
     test_date = sample_bars.index[50]
     result = signal.compute(sample_bars, sample_features, test_date)
 
-    assert result.name == "Regime Filter"
+    assert result.name == "Market Regime (trend/vol filter)"
     assert 0.0 <= result.score <= 1.0  # Regime filter is 0-1
     assert 0.0 <= result.confidence <= 1.0
 

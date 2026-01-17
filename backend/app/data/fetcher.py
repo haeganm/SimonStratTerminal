@@ -42,27 +42,42 @@ class DataFetcher:
         """
         Get the latest available bar date for a ticker.
         
+        Optimized to check cache first before making expensive provider calls.
+        
         Args:
             ticker: Stock ticker symbol
             
         Returns:
             Latest available date or None if no data found
         """
-        # Try to get recent data from cache first
+        # Normalize ticker to canonical form
+        canonical = canonical_ticker(ticker)
+        
+        # First, try to get latest date from cache (cheap operation)
+        latest_cached_date = self.cache.get_latest_date(canonical)
+        if latest_cached_date is not None:
+            # Check if cached date is recent (within last 5 days)
+            # If so, we can trust it without fetching
+            age_days = (date.today() - latest_cached_date).days
+            if age_days <= 5:
+                return latest_cached_date
+            # If cached date is old, we'll fetch to check for newer data
+        
+        # If no cache or cache is stale, try to get recent data from cache first
         end_date = date.today()
         start_date = date(end_date.year - 1, end_date.month, end_date.day)
         
         bars, _ = self.get_bars(ticker, start_date, end_date, use_cache=True)
         
         if bars.empty:
-            # Try fetching a wider range
+            # Try fetching a wider range (but still use cache if available)
             start_date = date(end_date.year - 5, end_date.month, end_date.day)
-            bars, _ = self.get_bars(ticker, start_date, end_date, use_cache=False)
+            bars, _ = self.get_bars(ticker, start_date, end_date, use_cache=True)
         
         if bars.empty:
-            return None
+            return latest_cached_date  # Return cached date if available, else None
         
-        # Get latest date from index
+        # Get latest date from fetched bars
         if isinstance(bars.index, pd.DatetimeIndex):
             latest_date = bars.index.max().date()
         else:
@@ -93,11 +108,14 @@ class DataFetcher:
         if canonical not in self._ticker_mapping:
             self._ticker_mapping[canonical] = ticker
         
-        # Debug logging: log ticker normalization
+        # Debug logging: log ticker normalization and cache key
         if settings.debug_mode:
+            cache_key = f"{canonical}:{self.provider.name}:unadjusted"
             logger.debug(
                 f"[DEBUG] DataFetcher.get_bars: "
-                f"input_ticker={ticker}, canonical_ticker={canonical}, "
+                f"requested_ticker={ticker}, canonical_ticker={canonical}, "
+                f"provider_symbol={self._ticker_mapping.get(canonical, ticker)}, "
+                f"cache_key={cache_key}, "
                 f"start_date={start_date}, end_date={end_date}, use_cache={use_cache}"
             )
         
@@ -127,7 +145,22 @@ class DataFetcher:
                     cached_start = pd.to_datetime(cached_bars.index.min()).date()
                     cached_end = pd.to_datetime(cached_bars.index.max()).date()
 
-                if cached_start <= start_date and cached_end >= end_date:
+                # Check if cache needs refresh (stale >1 day old and requesting recent data)
+                needs_refresh = False
+                if self.cache.needs_refresh(canonical, max_age_days=1):
+                    # Only auto-refresh if requesting recent data (within last 30 days)
+                    days_since_end = (date.today() - end_date).days
+                    if days_since_end <= 30:
+                        needs_refresh = True
+                        if settings.debug_mode:
+                            logger.debug(
+                                f"[DEBUG] DataFetcher.get_bars: AUTO_REFRESH_TRIGGERED "
+                                f"ticker={canonical}, cached_end={cached_end}, "
+                                f"requested_end={end_date}, cache_stale=True"
+                            )
+
+                # Check if we have all requested data and cache is fresh
+                if cached_start <= start_date and cached_end >= end_date and not needs_refresh:
                     logger.debug(
                         f"Returning {len(cached_bars)} bars from cache for {canonical}"
                     )
@@ -139,6 +172,37 @@ class DataFetcher:
                             f"requested_range=[{start_date}, {end_date}]"
                         )
                     return cached_bars, warnings
+
+                # Auto-refresh: if cache is stale and requesting recent data, refresh last 30 days
+                if needs_refresh:
+                    refresh_start = date.today() - pd.Timedelta(days=30)
+                    if refresh_start < cached_end:
+                        refresh_start = self._next_trading_day(cached_end)
+                    if refresh_start <= date.today():
+                        logger.info(
+                            f"Auto-refreshing stale cache for {canonical}: {refresh_start} to {date.today()}"
+                        )
+                        original_ticker = self._ticker_mapping.get(canonical, ticker)
+                        # Respect rate limiting: wait 1 second between requests
+                        import time
+                        time.sleep(1)  # Rate limit: 1 req/sec for Stooq
+                        fetched_bars, fetch_warnings = self._fetch_and_cache(
+                            original_ticker, canonical, refresh_start, date.today()
+                        )
+                        warnings.extend(fetch_warnings)
+                        if not fetched_bars.empty:
+                            # Combine cached and refreshed data
+                            cached_bars_reset = cached_bars.reset_index()
+                            fetched_bars_reset = fetched_bars.reset_index()
+                            combined = pd.concat([cached_bars_reset, fetched_bars_reset])
+                            combined = combined.drop_duplicates(subset=["date"], keep="last")
+                            combined = combined.set_index("date").sort_index()
+                            cached_bars = combined
+                            # Update cached_end after refresh
+                            if isinstance(combined.index, pd.DatetimeIndex):
+                                cached_end = combined.index.max().date()
+                            else:
+                                cached_end = pd.to_datetime(combined.index.max()).date()
 
                 # Partial cache hit - fetch missing ranges
                 if cached_end < end_date:
@@ -155,6 +219,9 @@ class DataFetcher:
                         )
                         # Pass original ticker to provider, canonical to cache
                         original_ticker = self._ticker_mapping.get(canonical, ticker)
+                        # Respect rate limiting: wait 1 second between requests
+                        import time
+                        time.sleep(1)  # Rate limit: 1 req/sec for Stooq
                         fetched_bars, fetch_warnings = self._fetch_and_cache(
                             original_ticker, canonical, fetch_start, end_date
                         )
@@ -238,43 +305,16 @@ class DataFetcher:
                 f"original_ticker={original_ticker}, canonical_ticker={canonical_ticker}, "
                 f"start_date={start_date}, end_date={end_date}, provider={self.provider.name}"
             )
-        import json
-        from pathlib import Path
-        from datetime import datetime
-        debug_log_path = Path(__file__).parent.parent.parent.parent / ".cursor" / "debug.log"
-        try:
-            log_entry = {
-                "timestamp": int(datetime.now().timestamp() * 1000),
-                "location": "fetcher._fetch_and_cache:entry",
-                "message": "_fetch_and_cache called",
-                "data": {"ticker": ticker, "start": str(start_date), "end": str(end_date)},
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "D",
-            }
-            with open(debug_log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(log_entry) + "\n")
-        except Exception:
-            pass
-        
         try:
             # Fetch from provider using original ticker (provider handles normalization)
             bars = self.provider.get_daily_bars(original_ticker, start_date, end_date)
             
-            try:
-                log_entry = {
-                    "timestamp": int(datetime.now().timestamp() * 1000),
-                    "location": "fetcher._fetch_and_cache:after_fetch",
-                    "message": "Provider returned data",
-                    "data": {"bars_empty": bars.empty, "bars_cols": list(bars.columns) if not bars.empty else [], "has_date_col": "date" in bars.columns if not bars.empty else False},
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "D",
-                }
-                with open(debug_log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except Exception:
-                pass
+            if settings.debug_mode:
+                logger.debug(
+                    f"[DEBUG] DataFetcher._fetch_and_cache: PROVIDER_CALL "
+                    f"original_ticker={original_ticker}, provider={self.provider.name}, "
+                    f"bars_returned={len(bars) if not bars.empty else 0}, bars_empty={bars.empty}"
+                )
 
             if bars.empty:
                 return pd.DataFrame(), []
@@ -282,20 +322,11 @@ class DataFetcher:
             # Store in cache using canonical ticker (for consistent cache keys)
             warnings = self.cache.store_bars(canonical_ticker, bars, source=self.provider.name)
             
-            try:
-                log_entry = {
-                    "timestamp": int(datetime.now().timestamp() * 1000),
-                    "location": "fetcher._fetch_and_cache:after_cache",
-                    "message": "Cache store completed",
-                    "data": {"warnings_count": len(warnings)},
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "D",
-                }
-                with open(debug_log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except Exception:
-                pass
+            if settings.debug_mode:
+                logger.debug(
+                    f"[DEBUG] DataFetcher._fetch_and_cache: CACHE_STORE "
+                    f"canonical_ticker={canonical_ticker}, warnings_count={len(warnings)}"
+                )
 
             # Convert to index format for return (fetcher expects date index)
             if "date" in bars.columns:
@@ -315,12 +346,14 @@ class DataFetcher:
                     last_date = pd.to_datetime(bars.index.max()).date()
                 
                 last_close = float(bars.iloc[-1]["close"]) if "close" in bars.columns else None
+                first_close = float(bars.iloc[0]["close"]) if "close" in bars.columns and len(bars) > 0 else None
                 
                 logger.debug(
                     f"[DEBUG] DataFetcher._fetch_and_cache: PROVIDER_RESPONSE "
                     f"original_ticker={original_ticker}, canonical_ticker={canonical_ticker}, "
                     f"provider={self.provider.name}, bars_count={len(bars)}, "
-                    f"first_date={first_date}, last_date={last_date}, last_close={last_close}, "
+                    f"first_date={first_date}, last_date={last_date}, "
+                    f"first_close={first_close}, last_close={last_close}, "
                     f"adjustment_status=unadjusted (Stooq CSV)"
                 )
 
@@ -328,21 +361,12 @@ class DataFetcher:
 
         except Exception as e:
             logger.error(f"Error fetching data: {e}")
-            # Debug log error
-            try:
-                log_entry = {
-                    "timestamp": int(datetime.now().timestamp() * 1000),
-                    "location": "fetcher._fetch_and_cache:error",
-                    "message": f"Fetch failed: {str(e)}",
-                    "data": {"error_type": type(e).__name__, "error_msg": str(e)},
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "D",
-                }
-                with open(debug_log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except Exception:
-                pass
+            if settings.debug_mode:
+                logger.debug(
+                    f"[DEBUG] DataFetcher._fetch_and_cache: ERROR "
+                    f"original_ticker={original_ticker}, canonical_ticker={canonical_ticker}, "
+                    f"error_type={type(e).__name__}, error_msg={str(e)}"
+                )
             return pd.DataFrame(), [f"Failed to fetch data: {str(e)}"]
 
     def _next_trading_day(self, d: date) -> date:

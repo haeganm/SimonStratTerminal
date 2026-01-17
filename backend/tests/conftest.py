@@ -38,8 +38,14 @@ def fake_provider():
             if len(dates) == 0:
                 return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
 
-            # Simple trending price
-            base_price = 100.0
+            # Simple trending price - different base price per ticker for cache isolation testing
+            # Use hash of ticker to generate different base prices with larger spread
+            ticker_hash = abs(hash(ticker)) % 10000
+            # Generate base prices with larger spread: 50 to 500, ensuring >10% difference
+            base_price = 50.0 + (ticker_hash % 450)  # Base price between 50 and 500
+            # Add ticker-specific multiplier to ensure significant difference
+            ticker_multiplier = 1.0 + (ticker_hash % 100) / 50.0  # 1.0 to 3.0
+            base_price = base_price * ticker_multiplier
             price_series = base_price + pd.Series(range(len(dates))) * 0.1
 
             df = pd.DataFrame({
