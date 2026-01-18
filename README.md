@@ -43,6 +43,7 @@ A systematic trading research terminal built for backtesting signal-based strate
 
 Past performance does not guarantee future results. All trading involves risk of loss. The authors and contributors are not responsible for any financial losses. Use at your own risk.
 
+Additionally, it is vital that you ensure the integrity of all math and data used - I am not perfect and this project likely includes potential mistakes or errors.
 ---
 
 ## Features
