@@ -31,7 +31,9 @@ class EnsembleModel:
 
         Args:
             signal_weights: Dictionary mapping signal names to weights (default: equal weights)
-            regime_weight: Weight for regime filter (acts as scaler/multiplier)
+            regime_weight: Weight for regime filter (0.0-1.0). Controls how strongly regime
+                affects both weighted_sum (score scaling) and confidence. Higher values mean
+                regime has more impact. Default: 0.3.
             threshold: Minimum weighted score to take a position (default: 0.1)
         """
         self.signal_weights = signal_weights or {}
@@ -41,6 +43,10 @@ class EnsembleModel:
     def combine(self, signals: list[SignalResult]) -> Forecast:
         """
         Combine signals into a single forecast.
+
+        Direction is determined by weighted_sum of signal SCORES only (confidence
+        does not affect direction). Confidence is computed separately and used
+        only for position sizing.
 
         Args:
             signals: List of SignalResult objects
@@ -81,13 +87,13 @@ class EnsembleModel:
             if total_weight > 0:
                 weights = {k: v / total_weight for k, v in weights.items()}
 
-        # Compute weighted sum of signal scores
+        # Compute weighted sum of signal scores (without confidence - confidence only affects sizing)
         weighted_sum = 0.0
         contributors = []
 
         for signal in trading_signals:
             weight = weights.get(signal.name, 0.0)
-            contribution = weight * signal.score * signal.confidence
+            contribution = weight * signal.score  # Do NOT multiply by confidence here
             weighted_sum += contribution
             contributors.append(
                 {
@@ -103,17 +109,19 @@ class EnsembleModel:
         regime_description = "Unknown regime"
 
         if regime_signal:
-            # Regime filter acts as confidence multiplier
+            # Regime filter acts as scaler for both score and confidence
             # High regime score (1.0) = no penalty
-            # Low regime score (0.0) = reduce confidence significantly
-            regime_multiplier = regime_signal.score  # Already in [0, 1]
+            # Low regime score (0.0) = reduce significantly
+            regime_multiplier = max(0.0, min(1.0, regime_signal.score))  # Clamp to [0, 1]
             regime_description = regime_signal.description or "Unknown regime"
 
-            # Also adjust weighted sum slightly based on regime
-            if regime_multiplier < 0.5:
-                weighted_sum *= 0.5  # Penalty for unfavorable regime
+            # Compute raw score scale (penalty for unfavorable regime)
+            raw_score_scale = 0.5 if regime_multiplier < 0.5 else 1.0
+            # Blend with regime_weight: (1 - regime_weight) * 1.0 + regime_weight * raw_score_scale
+            score_scale = (1.0 - self.regime_weight) * 1.0 + self.regime_weight * raw_score_scale
+            weighted_sum *= score_scale
 
-        # Determine direction
+        # Determine direction (based on weighted_sum, not confidence)
         if weighted_sum > self.threshold:
             direction = "long"
         elif weighted_sum < -self.threshold:
@@ -121,15 +129,18 @@ class EnsembleModel:
         else:
             direction = "flat"
 
-        # Compute confidence
+        # Compute confidence (separate from direction decision)
         # Base confidence: weighted average of signal confidences
         if trading_signals:
             base_confidence = sum(s.confidence * weights.get(s.name, 0.0) for s in trading_signals)
         else:
             base_confidence = 0.0
 
-        # Apply regime multiplier
-        confidence = base_confidence * (0.7 + 0.3 * regime_multiplier)
+        # Apply regime multiplier to confidence using regime_weight
+        raw_conf_scale = 0.7 + 0.3 * regime_multiplier
+        # Blend with regime_weight: (1 - regime_weight) * 1.0 + regime_weight * raw_conf_scale
+        conf_scale = (1.0 - self.regime_weight) * 1.0 + self.regime_weight * raw_conf_scale
+        confidence = base_confidence * conf_scale
         confidence = min(confidence, 1.0)
         confidence = max(confidence, 0.0)
 

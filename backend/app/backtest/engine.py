@@ -188,15 +188,15 @@ class BacktestEngine:
                 # Stop trading due to drawdown
                 break
 
-            # Compute position size
-            realized_vol = available_bars["close"].pct_change(fill_method=None).rolling(20).std().iloc[-1] * (252 ** 0.5)
-            if pd.isna(realized_vol) or realized_vol <= 0:
-                realized_vol = 0.2  # Default volatility
+            # Compute position size (using DAILY volatility, not annualized)
+            realized_vol_daily = available_bars["close"].pct_change(fill_method=None).rolling(20).std().iloc[-1]
+            if pd.isna(realized_vol_daily) or realized_vol_daily <= 0:
+                realized_vol_daily = 0.2 / (252 ** 0.5)  # Default: convert 20% annual to daily
 
             position_size_pct = compute_position_size(
                 forecast.direction,
                 forecast.confidence,
-                realized_vol,
+                realized_vol_daily,  # Pass daily volatility
             )
 
             # Apply leverage constraint
@@ -299,9 +299,10 @@ class BacktestEngine:
                     entry_value = abs(desired_shares) * current_price
                     entry_price = current_price
                 
-                # Apply transaction costs
+                # Apply transaction costs (cost model expects annualized volatility)
+                realized_vol_annualized = realized_vol_daily * (252 ** 0.5)
                 cost = self.cost_model.compute_cost(
-                    trade_value, current_price, current_volume, realized_vol
+                    trade_value, current_price, current_volume, realized_vol_annualized
                 )
 
                 # Update position and cash

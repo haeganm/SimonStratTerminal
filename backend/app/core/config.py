@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     walkforward_train_years: int = 1
     walkforward_test_months: int = 3
     walkforward_step_months: int = 1
-    target_volatility: float = 0.01
+    target_volatility: float = 0.01  # Target DAILY volatility (0.01 = 1% daily)
     max_position_size: float = 1.0
     max_leverage: float = 1.0
     transaction_cost_bps: float = 5.0

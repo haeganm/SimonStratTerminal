@@ -578,16 +578,16 @@ async def get_forecast(
         if bars_normalized.empty or len(bars_normalized) < 20:
             suggested_position_size = None
         else:
-            # Compute realized volatility
+            # Compute realized volatility (DAILY, not annualized)
             returns = bars_normalized["close"].pct_change(fill_method=None)
-            realized_vol = returns.rolling(20).std().iloc[-1] * (252 ** 0.5)  # Annualized
-            if pd.isna(realized_vol) or realized_vol <= 0:
-                realized_vol = 0.2  # Default
+            realized_vol_daily = returns.rolling(20).std().iloc[-1]  # Daily volatility
+            if pd.isna(realized_vol_daily) or realized_vol_daily <= 0:
+                realized_vol_daily = 0.2 / (252 ** 0.5)  # Default: convert 20% annual to daily
 
             suggested_position_size = compute_position_size(
                 forecast.direction,
                 forecast.confidence,
-                realized_vol,
+                realized_vol_daily,  # Pass daily volatility
             )
 
         # Build explanation (sanitize NaN values)
